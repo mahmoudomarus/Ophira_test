@@ -1,0 +1,134 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Environment variables (CRITICAL - NO API KEYS)
+.env
+.env.*
+!.env.example
+*.env
+env.local
+
+# Logs and monitoring
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+*.log.*
+
+# Test files and scripts (EXCLUDE ALL)
+test_*.py
+*_test.py
+test/
+tests/
+testing/
+*.test.js
+*.spec.js
+
+# Development and debugging files
+debug/
+temp/
+tmp/
+.temp/
+.tmp/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Sensor and calibration data
+calibration_data/
+sensor_data/
+medical_images/
+user_data/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vs/
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node.js (Frontend)
+node_modules/
+.npm
+.yarn-integrity
+.pnp
+.pnp.js
+
+# Task management
+tasks.json
+.taskmaster/reports/
+.taskmaster/backups/
+
+# Security and keys
+*.pem
+*.key
+*.crt
+secrets/
+private/
+
+# Medical data (HIPAA compliance)
+patient_data/
+medical_records/
+phi_data/
+
+# Model files (too large)
+*.model
+*.pkl
+*.h5
+*.onnx
+models/weights/
+
+# Cache and temporary
+.cache/
+*.tmp
+*.temp
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation builds
+docs/_build/
+site/ 

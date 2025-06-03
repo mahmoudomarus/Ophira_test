@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  html {
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  
+  * {
+    @apply border-gray-200;
+  }
+}
+
+@layer components {
+  .medical-panel {
+    @apply bg-white border border-gray-200 rounded-2xl shadow-medical;
+  }
+  
+  .status-indicator {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-online {
+    @apply bg-success-100 text-success-800;
+  }
+  
+  .status-offline {
+    @apply bg-gray-100 text-gray-800;
+  }
+  
+  .status-warning {
+    @apply bg-warning-100 text-warning-800;
+  }
+  
+  .status-critical {
+    @apply bg-heart-100 text-heart-800;
+  }
+  
+  .heartbeat-indicator {
+    @apply animate-heartbeat;
+  }
+  
+  .sensor-card {
+    @apply medical-panel p-6 transition-all duration-200 hover:shadow-lg;
+  }
+  
+  .chat-message {
+    @apply p-4 rounded-2xl max-w-[80%] break-words;
+  }
+  
+  .chat-message-user {
+    @apply bg-medical-500 text-white ml-auto;
+  }
+  
+  .chat-message-ai {
+    @apply bg-gray-100 text-gray-900 mr-auto;
+  }
+  
+  .chat-message-system {
+    @apply bg-warning-50 text-warning-900 mx-auto text-center italic;
+  }
+  
+  .vital-sign-card {
+    @apply medical-panel p-4 text-center transition-all duration-200 hover:shadow-lg;
+  }
+  
+  .vital-sign-value {
+    @apply text-2xl font-bold;
+  }
+  
+  .vital-sign-normal {
+    @apply text-success-600;
+  }
+  
+  .vital-sign-warning {
+    @apply text-warning-600;
+  }
+  
+  .vital-sign-critical {
+    @apply text-heart-600;
+  }
+  
+  .dashboard-grid {
+    @apply grid grid-cols-1 lg:grid-cols-3 gap-6;
+  }
+  
+  .main-content {
+    @apply lg:col-span-2 space-y-6;
+  }
+  
+  .sidebar-content {
+    @apply lg:col-span-1 space-y-6;
+  }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 10px currentColor;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .gradient-medical {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+  }
+  
+  .gradient-heart {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  }
+}
+
+/* Custom scrollbar for medical interface */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Medical chart animations */
+@keyframes pulse-medical {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.pulse-medical {
+  animation: pulse-medical 2s ease-in-out infinite;
+}
+
+/* Voice activity indicator */
+@keyframes voice-activity {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.voice-active {
+  animation: voice-activity 0.3s ease-in-out;
+} 
