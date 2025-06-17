@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Lightweight web frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8001
+    depends_on:
+      - api
+    # Size: ~50MB
+
+  # API server (without heavy ML)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8001:8001"
+    environment:
+      - ML_SERVICE_URL=http://ml-service:8002
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - database
+      - redis
+    # Size: ~200MB
+
+  # ML service (separate, can be serverless)
+  ml-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    ports:
+      - "8002:8002"
+    environment:
+      - MODEL_PATH=/models
+    volumes:
+      - ./models:/models:ro
+    # Size: ~2GB (only when needed)
+    deploy:
+      replicas: 0  # Start with 0, scale on demand
+
+  # Database
+  database:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ophira
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Size: ~50MB
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 100mb
+    # Size: ~20MB
+
+volumes:
+  postgres_data:
+
+# Total deployment: ~300MB (without ML service)
+# ML service scales on demand 

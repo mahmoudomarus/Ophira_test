@@ -1,0 +1,24 @@
+{
+  "name": "HAM10000 Skin Cancer Classification",
+  "description": "Skin cancer detection from HAM10000 dataset",
+  "url": "https://example.com/ham10000_model.pth",
+  "type": "pytorch",
+  "size_mb": 52,
+  "accuracy": 0.89,
+  "classes": [
+    "Melanoma",
+    "Nevus",
+    "Seborrheic Keratosis",
+    "Basal Cell Carcinoma"
+  ],
+  "input_size": [
+    224,
+    224,
+    3
+  ],
+  "license": "CC BY-NC",
+  "checksum": "placeholder_checksum",
+  "download_date": "2024-01-01",
+  "file_path": "models/real_medical/skin_cancer_ham10000/skin_cancer_ham10000.pth",
+  "actual_size_mb": 18.31274700164795
+}

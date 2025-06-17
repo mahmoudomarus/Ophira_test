@@ -24,7 +24,7 @@ export function useOphiraWebSocket({
   sessionId,
   autoReconnect = true,
   reconnectInterval = 5000,
-  maxReconnectAttempts = 5
+  maxReconnectAttempts = 3
 }: UseOphiraWebSocketOptions = {}) {
   const [state, setState] = useState<WebSocketState>({
     isConnected: false,
@@ -37,6 +37,7 @@ export function useOphiraWebSocket({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const isManuallyClosedRef = useRef(false);
+  const isConnectingRef = useRef(false);
 
   // Medical store actions
   const {
@@ -59,6 +60,16 @@ export function useOphiraWebSocket({
 
       // Route messages to appropriate store actions
       switch (data.type) {
+        case 'ping':
+          // Respond to server ping with pong
+          if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+            websocketRef.current.send(JSON.stringify({
+              type: 'pong',
+              timestamp: new Date().toISOString()
+            }));
+          }
+          break;
+          
         case 'vital_signs':
           if (data.data) {
             updateVitalSigns(data.data);
@@ -121,83 +132,16 @@ export function useOphiraWebSocket({
     }
   }, [updateVitalSigns, addSensorReading, updateSensorStatus, addAlert, addHealthAnalysis]);
 
-  // Handle WebSocket connection open
-  const handleOpen = useCallback(() => {
-    console.log('WebSocket connected');
-    setState(prev => ({
-      ...prev,
-      isConnected: true,
-      connectionStatus: 'connected',
-      error: null
-    }));
-    
-    // Reset reconnection attempts on successful connection
-    reconnectAttemptsRef.current = 0;
-    
-    toast.success('Connected to Ophira AI', {
-      duration: 3000,
-      icon: '🔗'
-    });
-  }, []);
-
-  // Handle WebSocket errors
-  const handleError = useCallback((event: Event) => {
-    console.error('WebSocket error:', event);
-    setState(prev => ({
-      ...prev,
-      error: 'WebSocket connection error',
-      connectionStatus: 'error'
-    }));
-  }, []);
-
-  // Handle WebSocket connection close
-  const handleClose = useCallback((event: CloseEvent) => {
-    console.log('WebSocket closed:', event.code, event.reason);
-    
-    setState(prev => ({
-      ...prev,
-      isConnected: false,
-      connectionStatus: 'disconnected'
-    }));
-
-    // Only attempt reconnection if not manually closed and auto-reconnect is enabled
-    if (!isManuallyClosedRef.current && autoReconnect && enabled && sessionId) {
-      if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-        setState(prev => ({
-          ...prev,
-          connectionStatus: 'reconnecting'
-        }));
-        
-        reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectAttemptsRef.current += 1;
-          console.log(`Attempting to reconnect... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
-          connect();
-        }, reconnectInterval);
-      } else {
-        console.error('Max reconnection attempts reached');
-        setState(prev => ({
-          ...prev,
-          error: 'Failed to reconnect after maximum attempts',
-          connectionStatus: 'error'
-        }));
-        
-        toast.error('Connection lost. Please refresh the page.', {
-          duration: 10000,
-          icon: '❌'
-        });
-      }
-    }
-  }, [autoReconnect, enabled, sessionId, maxReconnectAttempts, reconnectInterval]);
-
   // Connect to WebSocket
   const connect = useCallback(() => {
-    if (!enabled || !sessionId) return;
+    if (!enabled || !sessionId || isConnectingRef.current) return;
 
     // Close existing connection
     if (websocketRef.current) {
       websocketRef.current.close();
     }
 
+    isConnectingRef.current = true;
     setState(prev => ({
       ...prev,
       connectionStatus: 'connecting',
@@ -207,27 +151,108 @@ export function useOphiraWebSocket({
     try {
       const ws = createWebSocketConnection(sessionId);
       
-      ws.onopen = handleOpen;
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        isConnectingRef.current = false;
+        setState(prev => ({
+          ...prev,
+          isConnected: true,
+          connectionStatus: 'connected',
+          error: null
+        }));
+        
+        // Reset reconnection attempts on successful connection
+        reconnectAttemptsRef.current = 0;
+        
+        // Only show success toast if we were previously disconnected
+        if (reconnectAttemptsRef.current > 0) {
+          toast.success('Reconnected to Ophira AI', {
+            duration: 2000,
+            icon: '🔗'
+          });
+        }
+      };
+      
       ws.onmessage = handleMessage;
-      ws.onerror = handleError;
-      ws.onclose = handleClose;
+      
+      ws.onerror = (event: Event) => {
+        console.error('WebSocket error:', event);
+        isConnectingRef.current = false;
+        
+        // Only update state if we're not already in an error state to prevent loops
+        setState(prev => {
+          if (prev.connectionStatus !== 'error') {
+            return {
+              ...prev,
+              error: 'WebSocket connection error',
+              connectionStatus: 'error'
+            };
+          }
+          return prev;
+        });
+      };
+      
+      ws.onclose = (event: CloseEvent) => {
+        console.log('WebSocket closed:', event.code, event.reason);
+        isConnectingRef.current = false;
+        
+        setState(prev => ({
+          ...prev,
+          isConnected: false,
+          connectionStatus: 'disconnected'
+        }));
+
+        // Only attempt reconnection if conditions are met
+        if (!isManuallyClosedRef.current && 
+            autoReconnect && 
+            enabled && 
+            sessionId &&
+            reconnectAttemptsRef.current < maxReconnectAttempts &&
+            event.code !== 1000) { // Don't reconnect on normal closure
+          
+          setState(prev => ({
+            ...prev,
+            connectionStatus: 'reconnecting'
+          }));
+          
+          // Clear any existing timeout
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectAttemptsRef.current += 1;
+            console.log(`Attempting to reconnect... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+            connect();
+          }, reconnectInterval * Math.pow(2, reconnectAttemptsRef.current)); // Exponential backoff
+        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          console.error('Max reconnection attempts reached');
+          setState(prev => ({
+            ...prev,
+            error: 'Failed to reconnect after maximum attempts',
+            connectionStatus: 'error'
+          }));
+        }
+      };
       
       websocketRef.current = ws;
       isManuallyClosedRef.current = false;
       
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
+      isConnectingRef.current = false;
       setState(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to connect',
         connectionStatus: 'error'
       }));
     }
-  }, [enabled, sessionId, handleOpen, handleMessage, handleError, handleClose]);
+  }, [enabled, sessionId, handleMessage, autoReconnect, maxReconnectAttempts, reconnectInterval]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {
     isManuallyClosedRef.current = true;
+    isConnectingRef.current = false;
     
     // Clear reconnection timeout
     if (reconnectTimeoutRef.current) {

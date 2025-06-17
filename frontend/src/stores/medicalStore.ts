@@ -146,9 +146,33 @@ export const useMedicalStore = create<MedicalState>()(
           }
 
           if (sensorStatus.success && sensorStatus.data) {
-            sensorStatus.data.forEach((status: SensorStatus) => {
-              get().updateSensorStatus(status);
-            });
+            // Handle new sensor status format with error handling
+            const sensorData = sensorStatus.data;
+            
+            // Clear existing sensor statuses
+            set({ sensorStatuses: [] });
+            
+            // Process sensors from the response
+            if (sensorData.sensors) {
+              const statuses: SensorStatus[] = Object.entries(sensorData.sensors).map(([sensorId, sensorInfo]: [string, any]) => ({
+                sensor_id: sensorId,
+                name: sensorId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                type: sensorId.includes('camera') ? 'camera' : 
+                      sensorId.includes('tof') ? 'distance' :
+                      sensorId.includes('heart') ? 'heart_rate' : 'unknown',
+                status: sensorInfo.status || 'disconnected',
+                last_reading: sensorInfo.last_data,
+                quality: sensorInfo.quality || 'unknown',
+                battery_level: sensorInfo.battery_level,
+                signal_strength: sensorInfo.signal_strength,
+                error_message: sensorInfo.error
+              }));
+              
+              // Update sensor statuses
+              statuses.forEach(status => {
+                get().updateSensorStatus(status);
+              });
+            }
           }
 
           if (alerts.success && alerts.data) {
@@ -171,9 +195,39 @@ export const useMedicalStore = create<MedicalState>()(
           const response = await ophiraApi.getSensorStatus(sessionId);
           
           if (response.success && response.data) {
-            response.data.forEach((status: SensorStatus) => {
-              get().updateSensorStatus(status);
-            });
+            // Handle new sensor status format with error handling
+            const sensorData = response.data;
+            
+            // Clear existing sensor statuses
+            set({ sensorStatuses: [] });
+            
+            // Process sensors from the response
+            if (sensorData.sensors) {
+              const statuses: SensorStatus[] = Object.entries(sensorData.sensors).map(([sensorId, sensorInfo]: [string, any]) => ({
+                sensor_id: sensorId,
+                name: sensorId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                type: sensorId.includes('camera') ? 'camera' : 
+                      sensorId.includes('tof') ? 'distance' :
+                      sensorId.includes('heart') ? 'heart_rate' : 'unknown',
+                status: sensorInfo.status || 'disconnected',
+                last_data: sensorInfo.last_data,
+                quality: sensorInfo.quality || 'unknown',
+                battery_level: sensorInfo.battery_level,
+                signal_strength: sensorInfo.signal_strength,
+                error_message: sensorInfo.error
+              }));
+              
+              // Update sensor statuses
+              statuses.forEach(status => {
+                get().updateSensorStatus(status);
+              });
+            }
+            
+            // Handle connection errors
+            if (sensorData.errors && sensorData.errors.length > 0) {
+              console.warn('Sensor connection errors:', sensorData.errors);
+              // Don't set as error state since this is expected when sensors aren't connected
+            }
           }
         } catch (error) {
           console.error('Failed to fetch sensor status:', error);

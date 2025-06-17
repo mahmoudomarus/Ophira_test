@@ -20,12 +20,14 @@ interface DashboardHeaderProps {
   sessionInfo: SessionInfo | null;
   connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error' | 'reconnecting';
   isConnected: boolean;
+  onReconnect: () => void;
 }
 
 export function DashboardHeader({ 
   sessionInfo, 
   connectionStatus, 
-  isConnected 
+  isConnected,
+  onReconnect
 }: DashboardHeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { logout, refreshSession } = useSessionStore();
@@ -91,12 +93,29 @@ export function DashboardHeader({
         <div className="flex items-center space-x-6">
           {/* Connection Status */}
           <div className="flex items-center space-x-2">
-            {getConnectionIcon()}
+            <div className={`w-2 h-2 rounded-full ${
+              connectionStatus === 'connected' ? 'bg-green-500' : 
+              connectionStatus === 'connecting' || connectionStatus === 'reconnecting' ? 'bg-yellow-500 animate-pulse' : 
+              'bg-red-500'
+            }`} />
             <span className={`text-sm font-medium ${
-              isConnected ? 'text-success-600' : 'text-heart-600'
+              connectionStatus === 'connected' ? 'text-green-700' : 
+              connectionStatus === 'connecting' || connectionStatus === 'reconnecting' ? 'text-yellow-700' : 
+              'text-red-700'
             }`}>
-              {getConnectionText()}
+              {connectionStatus === 'connected' ? 'Connected' : 
+               connectionStatus === 'connecting' ? 'Connecting...' :
+               connectionStatus === 'reconnecting' ? 'Reconnecting...' :
+               'Disconnected'}
             </span>
+            {connectionStatus === 'disconnected' && (
+              <button
+                onClick={onReconnect}
+                className="ml-2 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                Reconnect
+              </button>
+            )}
           </div>
 
           {/* Warnings */}

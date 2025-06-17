@@ -220,7 +220,7 @@ export interface ModalProps {
 
 // WebSocket Event Types
 export interface WebSocketEvent {
-  type: 'vital_signs' | 'alert' | 'agent_status' | 'chat_message' | 'sensor_update';
+  type: 'vital_signs' | 'alert' | 'agent_status' | 'chat_message' | 'sensor_update' | 'ping' | 'pong';
   data: any;
   timestamp: string;
   session_id: string;

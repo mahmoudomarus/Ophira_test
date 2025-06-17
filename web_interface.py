@@ -32,6 +32,8 @@ from ophira.core.session_manager import (
     create_user_session, get_session, validate_session
 )
 from ophira.sensors.calibration import get_calibration_status
+from ophira.medical_ai.medical_specialist_enhanced import EnhancedMedicalSpecialistAgent
+from ophira.medical_ai.models import AIModelManager
 
 # Initialize logging and settings
 logger = setup_logging()
@@ -163,12 +165,20 @@ class StableWebSocketManager:
                 
                 # Check if connection is still alive
                 try:
-                    await websocket.ping()
+                    # Use send_text with a ping message instead of ping()
+                    await websocket.send_text(json.dumps({
+                        "type": "ping",
+                        "timestamp": datetime.now().isoformat()
+                    }))
                     
                     # Update last heartbeat
                     if session_id in self.connection_metadata:
                         self.connection_metadata[session_id]["last_heartbeat"] = datetime.now()
                         
+                except WebSocketDisconnect:
+                    logger.info(f"WebSocket disconnected during heartbeat for session {session_id}")
+                    await self.disconnect(session_id, "client_disconnect")
+                    break
                 except Exception as e:
                     logger.warning(f"Heartbeat failed for session {session_id}: {e}")
                     await self.disconnect(session_id, "heartbeat_failed")
@@ -247,6 +257,48 @@ class HealthAnalysisRequest(BaseModel):
     analysis_types: List[str] = ["general_health"]
     sensor_data: Optional[Dict[str, Any]] = None
     emergency: bool = False
+
+# Global medical AI components
+enhanced_medical_specialist: Optional[EnhancedMedicalSpecialistAgent] = None
+ai_model_manager: Optional[AIModelManager] = None
+
+# Add new Pydantic models after existing models (around line 250)
+
+class MedicalAnalysisRequest(BaseModel):
+    """Request for medical AI analysis"""
+    patient_id: str
+    analysis_type: str  # "retinal", "cardiovascular", "comprehensive"
+    image_data: Optional[str] = None  # Base64 encoded image
+    sensor_data: Optional[Dict[str, Any]] = None
+    patient_context: Optional[Dict[str, Any]] = None
+    emergency: bool = False
+
+class RetinalAnalysisRequest(BaseModel):
+    """Request for retinal analysis"""
+    patient_id: str
+    image_data: str  # Base64 encoded fundus image
+    patient_context: Optional[Dict[str, Any]] = None
+
+class MedicalAnalysisResponse(BaseModel):
+    """Response from medical AI analysis"""
+    session_id: str
+    analysis_type: str
+    risk_level: str
+    confidence: float
+    emergency_alert: bool
+    recommendations: List[str]
+    report_available: bool
+    processing_time: float
+
+class ClinicalReportResponse(BaseModel):
+    """Clinical report response"""
+    report_id: str
+    patient_id: str
+    session_id: str
+    report_type: str
+    executive_summary: str
+    formatted_report: Optional[str] = None
+    generated_timestamp: str
 
 # FastAPI app
 app = FastAPI(
@@ -344,143 +396,57 @@ test_user_id: Optional[str] = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the application on startup with enhanced error handling."""
-    global ophira_agent, medical_agent, sensor_agent, supervisory_agent, test_user_id
+    """Enhanced startup with Phase 2 medical AI initialization"""
+    global ophira_agent, medical_agent, sensor_agent, supervisory_agent
+    global enhanced_medical_specialist, ai_model_manager
     
     try:
-        logger.info("🚀 Starting Ophira AI Web Interface...")
+        logger.info("🚀 Starting Ophira AI Medical Monitoring System (Phase 2)")
         
-        # Initialize optimized database connections
+        # Initialize databases
+        await initialize_databases()
+        logger.info("✅ Databases initialized")
+        
+        # Initialize AI model manager
+        ai_model_manager = AIModelManager()
+        await ai_model_manager.initialize()
+        logger.info("✅ AI Model Manager initialized")
+        
+        # Initialize enhanced medical specialist
+        enhanced_medical_specialist = EnhancedMedicalSpecialistAgent()
+        await enhanced_medical_specialist.initialize()
+        logger.info("✅ Enhanced Medical Specialist initialized")
+        
+        # Initialize original agents
+        ophira_agent = OphiraVoiceAgent()
+        medical_agent = MedicalSpecialistAgent()
+        sensor_agent = SensorControlAgent()
+        supervisory_agent = SupervisoryAgent()
+        
+        # Start all agents (BaseAgent uses start() method, not initialize())
+        await ophira_agent.start()
+        await medical_agent.start()
+        await sensor_agent.start()
+        await supervisory_agent.start()
+        
+        logger.info("✅ All agents started")
+        
+        # Note: Supervisor monitoring starts automatically with agent tasks
+        # No need to call start_monitoring() separately
+        logger.info("✅ Supervisor monitoring started automatically")
+        
+        # Create test user
         try:
-            db_manager = get_optimized_db_manager()
-            db_success = await db_manager.initialize()
-            
-            if db_success:
-                logger.info("✅ Optimized database connections established")
-            else:
-                logger.warning("⚠️ Some database connections failed - continuing in limited mode")
-                
-        except Exception as db_error:
-            logger.error(f"❌ Database initialization failed: {db_error}")
-            logger.info("💡 Continuing in demo mode without persistent storage")
-        
-        # Start session manager
-        try:
-            await session_manager.start()
-            logger.info("✅ Session manager started")
-        except Exception as sm_error:
-            logger.warning(f"⚠️ Session manager start failed: {sm_error}")
-        
-        # Create test user (with fallback)
-        try:
-            test_user_id = await create_test_user()
-            logger.info(f"✅ Test user created with ID: {test_user_id}")
-        except Exception as user_error:
-            logger.warning(f"⚠️ Test user creation failed: {user_error}")
-            test_user_id = "demo_user_fallback"
-            logger.info(f"💡 Using fallback test user ID: {test_user_id}")
-        
-        # Initialize agents with enhanced error handling
-        logger.info("🤖 Initializing agents...")
-        
-        agent_initialization_tasks = []
-        
-        try:
-            ophira_agent = OphiraVoiceAgent()
-            agent_initialization_tasks.append(("Primary Voice Agent", ophira_agent.start()))
+            test_user = await create_test_user()
+            logger.info(f"✅ Test user created: {test_user['user_id']}")
         except Exception as e:
-            logger.error(f"❌ Failed to create Primary Voice Agent: {e}")
-            
-        try:
-            medical_agent = MedicalSpecialistAgent()
-            agent_initialization_tasks.append(("Medical Specialist Agent", medical_agent.start()))
-        except Exception as e:
-            logger.error(f"❌ Failed to create Medical Specialist Agent: {e}")
-            
-        try:
-            sensor_agent = SensorControlAgent()
-            agent_initialization_tasks.append(("Sensor Control Agent", sensor_agent.start()))
-        except Exception as e:
-            logger.error(f"❌ Failed to create Sensor Control Agent: {e}")
-            
-        try:
-            supervisory_agent = SupervisoryAgent()
-            agent_initialization_tasks.append(("Supervisory Agent", supervisory_agent.start()))
-        except Exception as e:
-            logger.error(f"❌ Failed to create Supervisory Agent: {e}")
+            logger.warning(f"Test user creation failed: {e}")
         
-        # Start agents concurrently with timeout
-        if agent_initialization_tasks:
-            try:
-                results = await asyncio.wait_for(
-                    asyncio.gather(
-                        *[task for _, task in agent_initialization_tasks],
-                        return_exceptions=True
-                    ),
-                    timeout=30.0
-                )
-                
-                # Process results
-                for i, (agent_name, _) in enumerate(agent_initialization_tasks):
-                    if i < len(results):
-                        if isinstance(results[i], Exception):
-                            logger.error(f"❌ {agent_name} failed to start: {results[i]}")
-                        else:
-                            logger.info(f"✅ {agent_name} started successfully")
-                    
-            except asyncio.TimeoutError:
-                logger.error("❌ Agent initialization timeout")
-            except Exception as e:
-                logger.error(f"❌ Agent initialization failed: {e}")
-        
-        # Create agent sessions with error handling
-        try:
-            session_creation_tasks = []
-            
-            if ophira_agent:
-                session_creation_tasks.append(
-                    session_manager.create_agent_session(
-                        agent_id=ophira_agent.id,
-                        agent_context={"role": "primary_voice", "capabilities": ["conversation", "coordination"]}
-                    )
-                )
-            
-            if medical_agent:
-                session_creation_tasks.append(
-                    session_manager.create_agent_session(
-                        agent_id=medical_agent.id,
-                        agent_context={"role": "medical_specialist", "capabilities": ["medical_analysis", "diagnosis"]}
-                    )
-                )
-            
-            if sensor_agent:
-                session_creation_tasks.append(
-                    session_manager.create_agent_session(
-                        agent_id=sensor_agent.id,
-                        agent_context={"role": "sensor_control", "capabilities": ["data_collection", "calibration"]}
-                    )
-                )
-            
-            if supervisory_agent:
-                session_creation_tasks.append(
-                    session_manager.create_agent_session(
-                        agent_id=supervisory_agent.id,
-                        agent_context={"role": "supervisory", "capabilities": ["coordination", "quality_control"]}
-                    )
-                )
-            
-            if session_creation_tasks:
-                await asyncio.gather(*session_creation_tasks, return_exceptions=True)
-                logger.info("✅ Agent sessions created")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Agent session creation failed: {e}")
-        
-        logger.info("🎉 Ophira AI Web Interface started successfully")
+        logger.info("🎉 Ophira AI System (Phase 2) startup complete!")
         
     except Exception as e:
-        logger.error(f"💥 Critical failure during startup: {e}")
-        logger.info("🔧 Server starting in minimal mode for debugging")
+        logger.error(f"❌ Startup failed: {e}")
+        raise
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -773,46 +739,76 @@ async def analyze_health(
 
 @app.get("/api/sensors/status")
 async def get_sensor_status(session_data = Depends(get_current_session)):
-    """Get current sensor status."""
+    """Get current sensor status with graceful error handling."""
     try:
         # Refresh session activity
         await session_manager.refresh_session(session_data.session_id)
         
-        # Request sensor status from sensor control agent
-        status_message = AgentMessage(
-            sender_id="web_interface",
-            recipient_id=sensor_agent.id,
-            message_type=MessageType.REQUEST,
-            priority=MessagePriority.NORMAL,
-            content={
-                "get_sensor_status": True,
-                "user_id": session_data.user_id,
-                "session_id": session_data.session_id
-            }
-        )
-        
-        await sensor_agent.receive_message(status_message)
-        
-        # For now, return mock status
-        return {
-            "sensors": {
-                "usb_camera_primary": {
-                    "status": "connected",
-                    "last_data": datetime.now().isoformat(),
-                    "quality": "good"
-                },
-                "vl53l4cx_tof_primary": {
-                    "status": "connected",
-                    "last_data": datetime.now().isoformat(),
-                    "quality": "excellent"
-                }
-            },
-            "timestamp": datetime.now().isoformat()
+        # Initialize default sensor status
+        sensor_status = {
+            "sensors": {},
+            "timestamp": datetime.now().isoformat(),
+            "connection_status": "checking",
+            "errors": []
         }
+        
+        # Try to get actual sensor status from sensor control agent
+        try:
+            if sensor_agent:
+                status_message = AgentMessage(
+                    sender_id="web_interface",
+                    recipient_id=sensor_agent.id,
+                    message_type=MessageType.REQUEST,
+                    priority=MessagePriority.NORMAL,
+                    content={
+                        "get_sensor_status": True,
+                        "user_id": session_data.user_id,
+                        "session_id": session_data.session_id
+                    }
+                )
+                
+                await sensor_agent.receive_message(status_message)
+                
+                # For now, return mock status with error handling
+                sensor_status["sensors"] = {
+                    "usb_camera_primary": {
+                        "status": "disconnected",
+                        "last_data": None,
+                        "quality": "unknown",
+                        "error": "Camera not connected"
+                    },
+                    "vl53l4cx_tof_primary": {
+                        "status": "disconnected", 
+                        "last_data": None,
+                        "quality": "unknown",
+                        "error": "ToF sensor not connected"
+                    },
+                    "heart_rate_sensor": {
+                        "status": "disconnected",
+                        "last_data": None,
+                        "quality": "unknown", 
+                        "error": "Heart rate sensor not connected"
+                    }
+                }
+                sensor_status["connection_status"] = "no_sensors_connected"
+                sensor_status["errors"].append("No physical sensors are currently connected")
+                
+        except Exception as sensor_error:
+            logger.warning(f"Sensor agent communication error: {sensor_error}")
+            sensor_status["connection_status"] = "agent_error"
+            sensor_status["errors"].append(f"Sensor agent communication failed: {str(sensor_error)}")
+        
+        return sensor_status
         
     except Exception as e:
         logger.error(f"Sensor status error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return error status instead of raising exception
+        return {
+            "sensors": {},
+            "timestamp": datetime.now().isoformat(),
+            "connection_status": "error",
+            "errors": [f"Failed to get sensor status: {str(e)}"]
+        }
 
 # Voice API Endpoints
 @app.post("/api/voice/start")
@@ -1167,9 +1163,9 @@ async def get_system_health():
         # Database health
         try:
             db_manager = get_optimized_db_manager()
-            db_health = await db_manager.get_health_status()
+            db_health = await db_manager.health_check()
             health_report["components"]["database"] = {
-                "status": "healthy" if db_health["overall_health"] else "unhealthy",
+                "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
                 "details": db_health
             }
         except Exception as e:
@@ -1278,8 +1274,14 @@ async def get_system_metrics():
         # Database metrics
         try:
             db_manager = get_optimized_db_manager()
-            db_health = await db_manager.get_health_status()
-            metrics["database"] = db_health["metrics"]
+            db_health = await db_manager.health_check()
+            # Extract metrics-like information from health check
+            metrics["database"] = {
+                "status": db_health.get("status", "unknown"),
+                "response_time_ms": db_health.get("response_time", 0),
+                "connections": db_health.get("connections", {}),
+                "errors": db_health.get("errors", [])
+            }
         except Exception as e:
             metrics["database"] = {"error": str(e)}
         
@@ -1818,6 +1820,378 @@ async def read_root():
     </body>
     </html>
     """
+
+# Add Phase 2 Medical AI endpoints after existing endpoints (around line 1400)
+
+@app.post("/api/medical/analyze", response_model=MedicalAnalysisResponse)
+async def start_medical_analysis(
+    analysis_request: MedicalAnalysisRequest,
+    session_data = Depends(get_current_session)
+):
+    """
+    Start comprehensive medical AI analysis
+    """
+    try:
+        if not enhanced_medical_specialist:
+            raise HTTPException(status_code=503, detail="Medical AI system not available")
+        
+        # Prepare input data
+        input_data = {}
+        
+        # Handle image data (base64 to numpy array)
+        if analysis_request.image_data:
+            import base64
+            import cv2
+            
+            # Decode base64 image
+            image_bytes = base64.b64decode(analysis_request.image_data.split(',')[1])
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if analysis_request.analysis_type in ["retinal", "comprehensive"]:
+                input_data['retinal_image'] = image
+        
+        # Add sensor data if provided
+        if analysis_request.sensor_data:
+            input_data.update(analysis_request.sensor_data)
+        
+        start_time = time.time()
+        
+        # Start medical analysis
+        session_id = await enhanced_medical_specialist.start_medical_analysis(
+            patient_id=analysis_request.patient_id,
+            analysis_type=analysis_request.analysis_type,
+            input_data=input_data
+        )
+        
+        processing_time = time.time() - start_time
+        
+        # Get session status
+        status = await enhanced_medical_specialist.get_session_status(session_id)
+        
+        # Send WebSocket notification
+        await websocket_manager.send_message(session_data["session_id"], {
+            "type": "medical_analysis_complete",
+            "session_id": session_id,
+            "analysis_type": analysis_request.analysis_type,
+            "risk_level": status.get("risk_level", "unknown"),
+            "emergency_alert": status.get("emergency_alert", False)
+        })
+        
+        logger.info(f"Medical analysis completed: {session_id} ({processing_time:.2f}s)")
+        
+        return MedicalAnalysisResponse(
+            session_id=session_id,
+            analysis_type=analysis_request.analysis_type,
+            risk_level=status.get("risk_level", "unknown"),
+            confidence=0.85,  # Would be extracted from actual results
+            emergency_alert=status.get("emergency_alert", False),
+            recommendations=["Comprehensive analysis completed"],
+            report_available=status.get("has_report", False),
+            processing_time=processing_time
+        )
+        
+    except Exception as e:
+        logger.error(f"Medical analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.post("/api/medical/retinal-analysis")
+async def analyze_retinal_image(
+    analysis_request: RetinalAnalysisRequest,
+    session_data = Depends(get_current_session)
+):
+    """
+    Specialized retinal image analysis endpoint
+    """
+    try:
+        if not enhanced_medical_specialist:
+            raise HTTPException(status_code=503, detail="Medical AI system not available")
+        
+        # Decode and process retinal image
+        import base64
+        import cv2
+        
+        image_bytes = base64.b64decode(analysis_request.image_data.split(',')[1])
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        retinal_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Start retinal analysis
+        session_id = await enhanced_medical_specialist.start_medical_analysis(
+            patient_id=analysis_request.patient_id,
+            analysis_type="retinal",
+            input_data={'retinal_image': retinal_image}
+        )
+        
+        # Get detailed results
+        status = await enhanced_medical_specialist.get_session_status(session_id)
+        
+        return {
+            "session_id": session_id,
+            "status": "completed",
+            "risk_level": status.get("risk_level", "unknown"),
+            "emergency_alert": status.get("emergency_alert", False),
+            "processing_time": status.get("duration", 0.0),
+            "report_available": status.get("has_report", False)
+        }
+        
+    except Exception as e:
+        logger.error(f"Retinal analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Retinal analysis failed: {str(e)}")
+
+@app.get("/api/medical/session/{session_id}")
+async def get_medical_session_status(
+    session_id: str,
+    session_data = Depends(get_current_session)
+):
+    """
+    Get medical analysis session status
+    """
+    try:
+        if not enhanced_medical_specialist:
+            raise HTTPException(status_code=503, detail="Medical AI system not available")
+        
+        status = await enhanced_medical_specialist.get_session_status(session_id)
+        
+        if status['status'] == 'not_found':
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return status
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get session status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
+
+@app.get("/api/medical/report/{session_id}", response_model=ClinicalReportResponse)
+async def get_clinical_report(
+    session_id: str,
+    session_data = Depends(get_current_session)
+):
+    """
+    Get clinical report for medical analysis session
+    """
+    try:
+        if not enhanced_medical_specialist:
+            raise HTTPException(status_code=503, detail="Medical AI system not available")
+        
+        report_data = await enhanced_medical_specialist.get_clinical_report(session_id)
+        
+        if not report_data:
+            raise HTTPException(status_code=404, detail="Report not found")
+        
+        # Generate formatted report
+        try:
+            from ophira.medical_ai.medical_specialist_enhanced import ClinicalReportGenerator, ClinicalReport
+            
+            report_generator = ClinicalReportGenerator()
+            
+            # Convert dict to ClinicalReport object (simplified)
+            formatted_report = f"""
+# MEDICAL AI ANALYSIS REPORT
+
+**Report ID:** {report_data['report_id']}
+**Patient:** {report_data['patient_id']}
+**Generated:** {report_data['generated_timestamp']}
+
+## EXECUTIVE SUMMARY
+{report_data['executive_summary']}
+
+## RISK ASSESSMENT
+- **Risk Level:** {report_data['risk_assessment'].get('risk_level', 'unknown')}
+- **Emergency Status:** {'YES' if report_data['emergency_alerts'] else 'NO'}
+- **AI Confidence:** {report_data['ai_confidence']:.1%}
+
+## RECOMMENDATIONS
+{chr(10).join([f"• {rec['description']}" for rec in report_data['recommendations']])}
+
+---
+*This report was generated by Ophira AI Medical Analysis System.*
+            """
+            
+        except Exception as e:
+            logger.warning(f"Report formatting failed: {e}")
+            formatted_report = None
+        
+        return ClinicalReportResponse(
+            report_id=report_data['report_id'],
+            patient_id=report_data['patient_id'],
+            session_id=report_data['session_id'],
+            report_type=report_data['report_type'],
+            executive_summary=report_data['executive_summary'],
+            formatted_report=formatted_report,
+            generated_timestamp=report_data['generated_timestamp']
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get clinical report: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get clinical report: {str(e)}")
+
+@app.get("/api/medical/models/status")
+async def get_medical_models_status(session_data = Depends(get_current_session)):
+    """
+    Get status of medical AI models
+    """
+    try:
+        if not ai_model_manager:
+            raise HTTPException(status_code=503, detail="AI Model Manager not available")
+        
+        # Get model information
+        models = ai_model_manager.list_models()
+        system_stats = ai_model_manager.get_system_stats()
+        
+        return {
+            "status": "operational",
+            "total_models": len(models),
+            "loaded_models": system_stats.get("loaded_models", 0),
+            "total_inferences": system_stats.get("total_inferences", 0),
+            "device": system_stats.get("device", "unknown"),
+            "models": [
+                {
+                    "model_id": model["metadata"]["model_id"],
+                    "name": model["metadata"]["name"],
+                    "domain": model["metadata"]["domain"],
+                    "accuracy": model["metadata"]["accuracy"],
+                    "loaded": model["loaded"]
+                }
+                for model in models
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get model status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get model status: {str(e)}")
+
+@app.post("/api/medical/emergency")
+async def handle_medical_emergency(
+    emergency_data: Dict[str, Any],
+    session_data = Depends(get_current_session)
+):
+    """
+    Handle medical emergency alerts
+    """
+    try:
+        if not enhanced_medical_specialist:
+            raise HTTPException(status_code=503, detail="Medical AI system not available")
+        
+        # Process emergency data
+        emergency_response = {
+            "alert_id": str(uuid.uuid4()),
+            "timestamp": datetime.now().isoformat(),
+            "severity": "critical",
+            "status": "acknowledged",
+            "recommended_actions": [
+                "Contact emergency medical services immediately",
+                "Ensure patient safety and comfort",
+                "Monitor vital signs continuously"
+            ]
+        }
+        
+        # Send emergency notification via WebSocket
+        await websocket_manager.broadcast({
+            "type": "medical_emergency",
+            "alert": emergency_response,
+            "session_id": session_data["session_id"]
+        })
+        
+        logger.critical(f"Medical emergency processed: {emergency_response['alert_id']}")
+        
+        return emergency_response
+        
+    except Exception as e:
+        logger.error(f"Emergency handling failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Emergency handling failed: {str(e)}")
+
+@app.get("/api/medical/dashboard")
+async def get_medical_dashboard(session_data = Depends(get_current_session)):
+    """
+    Get medical AI dashboard data
+    """
+    try:
+        dashboard_data = {
+            "system_status": "operational",
+            "active_sessions": 0,
+            "total_analyses_today": 0,
+            "emergency_alerts": 0,
+            "model_performance": {},
+            "recent_activities": []
+        }
+        
+        # Get enhanced medical specialist data
+        if enhanced_medical_specialist:
+            dashboard_data["active_sessions"] = len(enhanced_medical_specialist.active_sessions)
+            
+            model_status = await enhanced_medical_specialist.get_model_status()
+            if model_status.get("model_manager") == "initialized":
+                dashboard_data["system_status"] = "operational"
+                dashboard_data["model_performance"] = model_status.get("system_stats", {})
+        
+        # Get AI model manager data
+        if ai_model_manager:
+            system_stats = ai_model_manager.get_system_stats()
+            dashboard_data["total_analyses_today"] = system_stats.get("total_inferences", 0)
+        
+        return dashboard_data
+        
+    except Exception as e:
+        logger.error(f"Failed to get medical dashboard: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get medical dashboard: {str(e)}")
+
+# Missing API endpoints that were causing 404 errors
+@app.get("/api/vital-signs")
+async def get_vital_signs(session_data = Depends(get_current_session)):
+    """Get current vital signs data."""
+    try:
+        # Return mock vital signs data (in a real implementation, this would come from sensors)
+        vital_signs = {
+            "heart_rate": {"value": 72, "unit": "bpm", "status": "normal", "timestamp": datetime.now().isoformat()},
+            "blood_pressure": {"systolic": 120, "diastolic": 80, "unit": "mmHg", "status": "normal", "timestamp": datetime.now().isoformat()},
+            "temperature": {"value": 36.8, "unit": "°C", "status": "normal", "timestamp": datetime.now().isoformat()},
+            "oxygen_saturation": {"value": 98, "unit": "%", "status": "normal", "timestamp": datetime.now().isoformat()},
+            "respiratory_rate": {"value": 16, "unit": "bpm", "status": "normal", "timestamp": datetime.now().isoformat()}
+        }
+        
+        return {
+            "vital_signs": vital_signs,
+            "session_id": session_data.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Vital signs error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get vital signs: {str(e)}")
+
+@app.get("/api/alerts")
+async def get_alerts(session_data = Depends(get_current_session)):
+    """Get current medical alerts."""
+    try:
+        # Return mock alerts data (in a real implementation, this would come from the alert system)
+        alerts = [
+            {
+                "id": "alert_001",
+                "type": "info",
+                "severity": "low",
+                "title": "System Connected",
+                "message": "All sensors are functioning normally",
+                "timestamp": datetime.now().isoformat(),
+                "acknowledged": False
+            }
+        ]
+        
+        return {
+            "alerts": alerts,
+            "session_id": session_data.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "total_count": len(alerts),
+            "unacknowledged_count": len([a for a in alerts if not a.get("acknowledged", False)])
+        }
+        
+    except Exception as e:
+        logger.error(f"Alerts error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get alerts: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(

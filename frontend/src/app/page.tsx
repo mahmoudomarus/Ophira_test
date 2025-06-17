@@ -9,27 +9,30 @@ import { useSessionStore } from '@/stores/sessionStore';
 import { useOphiraWebSocket } from '@/hooks/useOphiraWebSocket';
 
 export default function DashboardPage() {
-  const { sessionInfo, isAuthenticated, isLoading, initializeSession } = useSessionStore();
+  const { sessionInfo, isAuthenticated, isLoading, isInitializing, initializeSession } = useSessionStore();
   
-  // Initialize WebSocket connection
-  const { 
-    isConnected, 
-    connectionStatus, 
-    lastMessage 
+  // Initialize WebSocket connection with session data
+  const {
+    isConnected,
+    connectionStatus,
+    lastMessage,
+    error: wsError,
+    sendMessage,
+    reconnect
   } = useOphiraWebSocket({
-    enabled: isAuthenticated,
+    enabled: !!sessionInfo?.session_id, // Re-enable WebSocket when session exists
     sessionId: sessionInfo?.session_id,
-    autoReconnect: true,
-    reconnectInterval: 5000,
-    maxReconnectAttempts: 5
+    autoReconnect: false, // Keep auto-reconnect disabled for stability
+    maxReconnectAttempts: 1, // Limit to just 1 attempt
+    reconnectInterval: 10000 // 10 second intervals if any reconnection happens
   });
 
   useEffect(() => {
     // Initialize session on component mount
-    if (!isAuthenticated && !isLoading) {
+    if (!isAuthenticated && !isLoading && !isInitializing) {
       initializeSession();
     }
-  }, [isAuthenticated, isLoading, initializeSession]);
+  }, [isAuthenticated, isLoading, isInitializing]);
 
   // Show loading state
   if (isLoading) {
@@ -51,6 +54,7 @@ export default function DashboardPage() {
         sessionInfo={sessionInfo}
         connectionStatus={connectionStatus}
         isConnected={isConnected}
+        onReconnect={reconnect}
       />
 
       {/* Main Dashboard */}

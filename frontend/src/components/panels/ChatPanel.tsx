@@ -41,9 +41,11 @@ export function ChatPanel({ className = '' }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // WebSocket connection for real-time chat
+  // WebSocket connection for real-time chat (temporarily disabled for stability)
   const { connected: wsConnected, sendMessage: sendWSMessage } = useWebSocket({
-    sessionId: sessionInfo?.session_id || '',
+    sessionId: '', // Temporarily disable by passing empty sessionId
+    autoReconnect: false, // Disable auto-reconnect
+    maxReconnectAttempts: 0, // No reconnect attempts
     onMessage: (message) => {
       console.log('💬 Chat received WebSocket message:', message);
       
@@ -69,11 +71,11 @@ export function ChatPanel({ className = '' }: ChatPanelProps) {
     },
     onConnect: () => {
       console.log('💬 Chat WebSocket connected');
-      addSystemMessage("Connected to Ophira AI - Ready for consultation");
+      // Removed system message to prevent spam
     },
     onDisconnect: () => {
       console.log('💬 Chat WebSocket disconnected');
-      addSystemMessage("Disconnected from Ophira AI");
+      // Removed system message to prevent spam
     },
   });
 
@@ -123,7 +125,7 @@ export function ChatPanel({ className = '' }: ChatPanelProps) {
 
   const addMessage = (content: string, sender: 'user' | 'ai' | 'system', metadata?: any) => {
     const newMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       content,
       sender,
       timestamp: new Date().toISOString(),

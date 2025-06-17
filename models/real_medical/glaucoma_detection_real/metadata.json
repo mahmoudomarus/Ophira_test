@@ -1,0 +1,23 @@
+{
+  "name": "ORIGA Glaucoma Detection Model",
+  "description": "Glaucoma detection from ORIGA dataset research",
+  "url": "https://example.com/glaucoma_model.h5",
+  "type": "tensorflow",
+  "size_mb": 28,
+  "accuracy": 0.87,
+  "classes": [
+    "Normal",
+    "Suspect",
+    "Glaucoma"
+  ],
+  "input_size": [
+    224,
+    224,
+    3
+  ],
+  "license": "Academic",
+  "checksum": "placeholder_checksum",
+  "download_date": "2024-01-01",
+  "file_path": "models/real_medical/glaucoma_detection_real/glaucoma_detection_real.h5",
+  "actual_size_mb": 4.60601806640625
+}

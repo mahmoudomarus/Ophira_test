@@ -1,0 +1,95 @@
+{
+  "diabetic_retinopathy_v1": {
+    "model_id": "diabetic_retinopathy_v1",
+    "name": "Diabetic Retinopathy Detection",
+    "version": "1.0.0",
+    "domain": "retinal",
+    "model_type": "pytorch",
+    "file_path": "retinal/diabetic_retinopathy_v1.pth",
+    "input_shape": [
+      3,
+      512,
+      512
+    ],
+    "output_classes": [
+      "No DR",
+      "Mild",
+      "Moderate",
+      "Severe",
+      "Proliferative"
+    ],
+    "accuracy": 0.92,
+    "sensitivity": 0.89,
+    "specificity": 0.94,
+    "description": "Deep learning model for diabetic retinopathy severity classification",
+    "clinical_validation": true
+  },
+  "glaucoma_detection_v1": {
+    "model_id": "glaucoma_detection_v1",
+    "name": "Glaucoma Detection System",
+    "version": "1.0.0",
+    "domain": "retinal",
+    "model_type": "tensorflow",
+    "file_path": "retinal/glaucoma_detection_v1.h5",
+    "input_shape": [
+      224,
+      224,
+      3
+    ],
+    "output_classes": [
+      "Normal",
+      "Suspect",
+      "Glaucoma"
+    ],
+    "accuracy": 0.88,
+    "sensitivity": 0.85,
+    "specificity": 0.91,
+    "description": "CNN model for glaucoma detection from fundus images",
+    "clinical_validation": true
+  },
+  "ecg_arrhythmia_v1": {
+    "model_id": "ecg_arrhythmia_v1",
+    "name": "ECG Arrhythmia Detection",
+    "version": "1.0.0",
+    "domain": "cardiovascular",
+    "model_type": "pytorch",
+    "file_path": "cardiovascular/ecg_arrhythmia_v1.pth",
+    "input_shape": [
+      12,
+      1000
+    ],
+    "output_classes": [
+      "Normal",
+      "Atrial Fibrillation",
+      "Atrial Flutter",
+      "Ventricular Tachycardia",
+      "Other"
+    ],
+    "accuracy": 0.94,
+    "sensitivity": 0.91,
+    "specificity": 0.96,
+    "description": "Multi-class ECG arrhythmia detection using 1D CNN",
+    "clinical_validation": true
+  },
+  "hrv_analysis_v1": {
+    "model_id": "hrv_analysis_v1",
+    "name": "Heart Rate Variability Analysis",
+    "version": "1.0.0",
+    "domain": "cardiovascular",
+    "model_type": "sklearn",
+    "file_path": "cardiovascular/hrv_analysis_v1.pkl",
+    "input_shape": [
+      50
+    ],
+    "output_classes": [
+      "Low Risk",
+      "Medium Risk",
+      "High Risk"
+    ],
+    "accuracy": 0.86,
+    "sensitivity": 0.83,
+    "specificity": 0.89,
+    "description": "Random Forest model for cardiovascular risk assessment from HRV",
+    "clinical_validation": false
+  }
+}

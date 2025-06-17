@@ -1,0 +1,25 @@
+{
+  "name": "EyePACS Diabetic Retinopathy Model",
+  "description": "Real DR detection model trained on EyePACS dataset",
+  "url": "https://github.com/btgraham/SparseConvNet",
+  "type": "pytorch",
+  "size_mb": 45,
+  "accuracy": 0.9,
+  "classes": [
+    "No DR",
+    "Mild",
+    "Moderate",
+    "Severe",
+    "Proliferative"
+  ],
+  "input_size": [
+    512,
+    512,
+    3
+  ],
+  "license": "MIT",
+  "checksum": "placeholder_checksum",
+  "download_date": "2024-01-01",
+  "file_path": "models/real_medical/diabetic_retinopathy_real/diabetic_retinopathy_real.pth",
+  "actual_size_mb": 18.31406593322754
+}

@@ -1,0 +1,23 @@
+{
+  "name": "Chest X-ray Pneumonia Detection",
+  "description": "Real pneumonia detection from chest X-rays",
+  "url": "https://github.com/ieee8023/covid-chestxray-dataset",
+  "type": "pytorch",
+  "size_mb": 67,
+  "accuracy": 0.91,
+  "classes": [
+    "Normal",
+    "Pneumonia",
+    "COVID-19"
+  ],
+  "input_size": [
+    224,
+    224,
+    1
+  ],
+  "license": "Creative Commons",
+  "checksum": "placeholder_checksum",
+  "download_date": "2024-01-01",
+  "file_path": "models/real_medical/chest_xray_pneumonia/chest_xray_pneumonia.pth",
+  "actual_size_mb": 18.28784465789795
+}

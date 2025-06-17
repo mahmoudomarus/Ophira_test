@@ -8,6 +8,7 @@ interface SessionState {
   sessionInfo: SessionInfo | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitializing: boolean;
   error: string | null;
   warnings: SessionWarning[];
   lastActivity: Date | null;
@@ -29,13 +30,21 @@ export const useSessionStore = create<SessionState>()(
       sessionInfo: null,
       isAuthenticated: false,
       isLoading: false,
+      isInitializing: false,
       error: null,
       warnings: [],
       lastActivity: null,
 
       // Initialize session (for auto-login)
       initializeSession: async () => {
-        set({ isLoading: true, error: null });
+        const currentState = get();
+        
+        // Prevent multiple concurrent initializations
+        if (currentState.isInitializing || currentState.isAuthenticated) {
+          return;
+        }
+        
+        set({ isLoading: true, isInitializing: true, error: null });
         
         try {
           // Try to create a demo session
@@ -47,8 +56,11 @@ export const useSessionStore = create<SessionState>()(
           console.error('Failed to initialize session:', error);
           set({ 
             error: error instanceof Error ? error.message : 'Failed to initialize session',
-            isLoading: false 
+            isLoading: false,
+            isInitializing: false
           });
+        } finally {
+          set({ isInitializing: false });
         }
       },
 
@@ -154,7 +166,7 @@ export const useSessionStore = create<SessionState>()(
     }),
     {
       name: 'ophira-session-store',
-      partialize: (state) => ({
+      partialize: (state: SessionState) => ({
         sessionInfo: state.sessionInfo,
         isAuthenticated: state.isAuthenticated,
         lastActivity: state.lastActivity
@@ -163,7 +175,8 @@ export const useSessionStore = create<SessionState>()(
   )
 );
 
-// Auto-refresh session every 5 minutes
+// Auto-refresh session every 5 minutes (temporarily disabled to prevent issues)
+/*
 if (typeof window !== 'undefined') {
   setInterval(() => {
     const store = useSessionStore.getState();
@@ -171,4 +184,5 @@ if (typeof window !== 'undefined') {
       store.refreshSession().catch(console.error);
     }
   }, 5 * 60 * 1000);
-} 
+}
+*/ 

@@ -492,101 +492,83 @@ class OptimizedDatabaseManager:
                 logger.error(f"Health check error: {e}")
     
     async def _perform_health_checks(self):
-        """Perform health checks on all database connections"""
-        health_tasks = []
-        
-        # MongoDB health check
-        if self.mongo_client:
-            health_tasks.append(self._check_mongo_health())
-        
-        # PostgreSQL health check
-        if self.postgres_pool:
-            health_tasks.append(self._check_postgres_health())
-        
-        # Redis health check
-        if self.redis_client:
-            health_tasks.append(self._check_redis_health())
-        
-        if health_tasks:
-            results = await asyncio.gather(*health_tasks, return_exceptions=True)
-            
-            # Log health status
-            for i, result in enumerate(results):
-                db_names = ['MongoDB', 'PostgreSQL', 'Redis']
-                if isinstance(result, Exception):
-                    logger.warning(f"⚠️ {db_names[i]} health check failed: {result}")
-                elif result:
-                    logger.debug(f"✅ {db_names[i]} health check passed")
-    
-    async def _check_mongo_health(self) -> bool:
-        """Check MongoDB connection health"""
+        """Perform health checks on all connections"""
         try:
-            start_time = time.time()
-            await asyncio.wait_for(
-                self.mongo_client.admin.command('ping'),
-                timeout=5.0
-            )
-            response_time = time.time() - start_time
-            self.connection_metrics['mongo']['avg_response_time'] = response_time
-            self.connection_status['mongo'] = True
-            return True
+            # Check MongoDB
+            if self.mongo_client:
+                await self.mongo_client.admin.command('ping')
+                
+            # Check PostgreSQL
+            if self.postgres_pool:
+                async with self.postgres_pool.acquire() as conn:
+                    await conn.execute('SELECT 1')
+                    
+            # Check Redis
+            if self.redis_client:
+                await self.redis_client.ping()
+                
         except Exception as e:
-            self.connection_status['mongo'] = False
-            self.connection_metrics['mongo']['errors'] += 1
-            logger.warning(f"MongoDB health check failed: {e}")
-            # Attempt reconnection
-            asyncio.create_task(self._initialize_mongodb_optimized())
-            return False
+            logger.error(f"Health check failed: {e}")
     
-    async def _check_postgres_health(self) -> bool:
-        """Check PostgreSQL connection health"""
-        try:
-            start_time = time.time()
-            async with self.postgres_pool.acquire() as connection:
-                await asyncio.wait_for(
-                    connection.execute("SELECT 1"),
-                    timeout=5.0
-                )
-            response_time = time.time() - start_time
-            self.connection_metrics['postgres']['avg_response_time'] = response_time
-            self.connection_status['postgres'] = True
-            return True
-        except Exception as e:
-            self.connection_status['postgres'] = False
-            self.connection_metrics['postgres']['errors'] += 1
-            logger.warning(f"PostgreSQL health check failed: {e}")
-            # Attempt reconnection
-            asyncio.create_task(self._initialize_postgresql_optimized())
-            return False
-    
-    async def _check_redis_health(self) -> bool:
-        """Check Redis connection health"""
-        try:
-            start_time = time.time()
-            await asyncio.wait_for(
-                self.redis_client.ping(),
-                timeout=5.0
-            )
-            response_time = time.time() - start_time
-            self.connection_metrics['redis']['avg_response_time'] = response_time
-            self.connection_status['redis'] = True
-            return True
-        except Exception as e:
-            self.connection_status['redis'] = False
-            self.connection_metrics['redis']['errors'] += 1
-            logger.warning(f"Redis health check failed: {e}")
-            # Attempt reconnection
-            asyncio.create_task(self._initialize_redis_optimized())
-            return False
-    
-    async def get_health_status(self) -> Dict[str, Any]:
-        """Get comprehensive database health status"""
-        return {
-            "status": self.connection_status,
-            "metrics": self.connection_metrics,
-            "last_check": datetime.now().isoformat(),
-            "overall_health": all(self.connection_status.values())
+    async def health_check(self) -> Dict[str, Any]:
+        """Public method to get current health status of all database connections"""
+        health_status = {
+            'status': 'healthy',
+            'response_time': 0.0,
+            'connections': {
+                'mongodb': False,
+                'postgresql': False,
+                'redis': False
+            },
+            'errors': []
         }
+        
+        start_time = time.time()
+        
+        try:
+            # Check MongoDB
+            if self.mongo_client:
+                try:
+                    await self.mongo_client.admin.command('ping')
+                    health_status['connections']['mongodb'] = True
+                except Exception as e:
+                    health_status['errors'].append(f"MongoDB: {str(e)}")
+                    
+            # Check PostgreSQL
+            if self.postgres_pool:
+                try:
+                    async with self.postgres_pool.acquire() as conn:
+                        await conn.execute('SELECT 1')
+                    health_status['connections']['postgresql'] = True
+                except Exception as e:
+                    health_status['errors'].append(f"PostgreSQL: {str(e)}")
+                    
+            # Check Redis
+            if self.redis_client:
+                try:
+                    await self.redis_client.ping()
+                    health_status['connections']['redis'] = True
+                except Exception as e:
+                    health_status['errors'].append(f"Redis: {str(e)}")
+            
+            # Calculate overall status
+            connected_count = sum(health_status['connections'].values())
+            total_connections = len([c for c in [self.mongo_client, self.postgres_pool, self.redis_client] if c])
+            
+            if connected_count == total_connections and total_connections > 0:
+                health_status['status'] = 'healthy'
+            elif connected_count > 0:
+                health_status['status'] = 'degraded'
+            else:
+                health_status['status'] = 'unhealthy'
+                
+            health_status['response_time'] = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+        except Exception as e:
+            health_status['status'] = 'error'
+            health_status['errors'].append(f"Health check failed: {str(e)}")
+            
+        return health_status
     
     async def close(self):
         """Close all database connections gracefully"""
